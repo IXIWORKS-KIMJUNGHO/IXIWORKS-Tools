@@ -164,11 +164,10 @@ class BuildPromptNode:
                 camera_info = item[2]
                 composition = item[3]
 
-                # Build the prompt by combining all fields
-                combined_prompt = f"{description} {time_weather} {camera_info} {composition}"
-
-                # Clean up multiple spaces
-                combined_prompt = " ".join(combined_prompt.split())
+                # Build the prompt: camera/lighting first for stronger influence,
+                # description last (trigger_words and character are added externally)
+                parts = [p for p in [time_weather, camera_info, composition, description] if p.strip()]
+                combined_prompt = ", ".join(parts)
 
                 prompts.append(combined_prompt)
                 logger.info(f"[StoryBoard] BuildPromptNode: Built prompt for scene {idx+1}")

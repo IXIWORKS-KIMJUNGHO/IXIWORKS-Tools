@@ -159,7 +159,7 @@ class ControlNetPreprocessorNode:
 
 class DiffSynthControlnetAdvancedNode:
     """QwenImageDiffsynthControlnet의 출력 MODEL을 받아
-    start_percent / end_percent 스텝 범위 제어를 추가하는 래퍼 노드."""
+    스텝 범위 제어 + 선형 페이드를 적용하는 래퍼 노드."""
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -172,6 +172,17 @@ class DiffSynthControlnetAdvancedNode:
                 "end_percent": ("FLOAT", {
                     "default": 1.0, "min": 0.0, "max": 1.0, "step": 0.001,
                 }),
+                "stronger": ("FLOAT", {
+                    "default": 1.0, "min": 0.0, "max": 2.0, "step": 0.01,
+                }),
+                "weaker": ("FLOAT", {
+                    "default": 0.0, "min": 0.0, "max": 2.0, "step": 0.01,
+                }),
+                "fade": ("BOOLEAN", {"default": False}),
+                "fade_direction": (
+                    ["stronger → weaker", "weaker → stronger"],
+                    {"default": "stronger → weaker"},
+                ),
             }
         }
 
@@ -180,13 +191,19 @@ class DiffSynthControlnetAdvancedNode:
     FUNCTION = "apply"
     CATEGORY = "IXIWORKS/Image"
 
-    def apply(self, model, start_percent, end_percent):
-        if start_percent == 0.0 and end_percent == 1.0:
-            return (model,)
-
+    def apply(self, model, start_percent, end_percent,
+              stronger, weaker, fade, fade_direction):
         model_sampling = model.get_model_object("model_sampling")
         sigma_start = model_sampling.percent_to_sigma(start_percent)
         sigma_end = model_sampling.percent_to_sigma(end_percent)
+
+        if fade_direction == "stronger → weaker":
+            str_begin, str_finish = stronger, weaker
+        else:
+            str_begin, str_finish = weaker, stronger
+
+        use_fade = fade
+        uniform_scale = stronger
 
         m = model.clone()
         existing_patches = m.model_options.get("patches", {})
@@ -194,7 +211,8 @@ class DiffSynthControlnetAdvancedNode:
 
         wrapped = []
         for patch in double_block_patches:
-            def make_wrapper(original_patch, s_start, s_end):
+            def make_wrapper(original_patch, s_start, s_end,
+                             s_begin, s_finish, do_fade, u_scale):
                 def wrapper(kwargs):
                     t_opts = kwargs.get("transformer_options")
                     if t_opts is not None:
@@ -203,9 +221,30 @@ class DiffSynthControlnetAdvancedNode:
                             sigma = sigmas[0].item()
                             if sigma > s_start or sigma < s_end:
                                 return kwargs
+
+                            if do_fade and s_start != s_end:
+                                t = (s_start - sigma) / (s_start - s_end)
+                                scale = s_begin + (s_finish - s_begin) * t
+                            else:
+                                scale = u_scale
+
+                            if scale == 1.0:
+                                return original_patch(kwargs)
+                            if scale == 0.0:
+                                return kwargs
+
+                            before_img = kwargs["img"].clone()
+                            result = original_patch(kwargs)
+                            delta = result["img"] - before_img
+                            result["img"] = before_img + delta * scale
+                            return result
+
                     return original_patch(kwargs)
                 return wrapper
-            wrapped.append(make_wrapper(patch, sigma_start, sigma_end))
+            wrapped.append(make_wrapper(
+                patch, sigma_start, sigma_end,
+                str_begin, str_finish, use_fade, uniform_scale,
+            ))
 
         if wrapped:
             m.model_options = m.model_options.copy()
