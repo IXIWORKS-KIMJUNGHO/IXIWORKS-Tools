@@ -15,6 +15,9 @@ qwen-vl-utils
 # NOTE: Must use headless version to avoid conflict with ComfyUI's opencv-python-headless
 opencv-python-headless
 
+# Required for ControlNet preprocessor node
+controlnet-aux
+
 # Optional: 4-bit quantization support (reduces VRAM usage)
 # Uncomment if you want to use use_4bit=True option:
 # bitsandbytes
