@@ -14,8 +14,8 @@ class SwitchBooleanNode:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "input_a": (ANY,),
-                "input_b": (ANY,),
+                "on_false": (ANY,),
+                "on_true": (ANY,),
                 "boolean_switch": ("BOOLEAN", {"default": True}),
             }
         }
@@ -25,8 +25,8 @@ class SwitchBooleanNode:
     FUNCTION = "switch"
     CATEGORY = "IXIWORKS/Utils"
 
-    def switch(self, input_a, input_b, boolean_switch):
-        return (input_a if boolean_switch else input_b,)
+    def switch(self, on_false, on_true, boolean_switch):
+        return (on_true if boolean_switch else on_false,)
 
 
 class StringToListNode:
@@ -186,11 +186,10 @@ class ImageToListNode:
     def INPUT_TYPES(cls):
         required = {
             "count": ("INT", {"default": 4, "min": 1, "max": cls.MAX_INPUTS, "step": 1}),
-            "image_1": ("IMAGE",),
         }
         optional = {
             f"image_{i}": ("IMAGE",)
-            for i in range(2, cls.MAX_INPUTS + 1)
+            for i in range(1, cls.MAX_INPUTS + 1)
         }
         return {"required": required, "optional": optional}
 
