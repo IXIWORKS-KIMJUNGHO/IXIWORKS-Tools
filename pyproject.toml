@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-ixiworks-tools"
 description = "Video description and storyboard custom nodes for ComfyUI. Includes Qwen3-VL video analysis, JSON storyboard parsing, and character prompt generation."
-version = "1.5.1"
+version = "1.5.2"
 license = { file = "LICENSE" }
 dependencies = ["qwen-vl-utils", "opencv-python", "controlnet-aux"]
 

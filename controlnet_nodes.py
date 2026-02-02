@@ -166,23 +166,22 @@ class DiffSynthControlnetAdvancedNode:
         return {
             "required": {
                 "model": ("MODEL",),
-                "start_percent": ("FLOAT", {
-                    "default": 0.0, "min": 0.0, "max": 1.0, "step": 0.001,
-                }),
-                "end_percent": ("FLOAT", {
-                    "default": 1.0, "min": 0.0, "max": 1.0, "step": 0.001,
-                }),
-                "stronger": ("FLOAT", {
+                "strength": ("FLOAT", {
                     "default": 1.0, "min": 0.0, "max": 2.0, "step": 0.01,
                 }),
-                "weaker": ("FLOAT", {
+                "start": ("FLOAT", {
+                    "default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01,
+                }),
+                "end": ("FLOAT", {
+                    "default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01,
+                }),
+                "fade": (
+                    ["none", "fade out", "fade in"],
+                    {"default": "none"},
+                ),
+                "low": ("FLOAT", {
                     "default": 0.0, "min": 0.0, "max": 2.0, "step": 0.01,
                 }),
-                "fade": ("BOOLEAN", {"default": False}),
-                "fade_direction": (
-                    ["stronger → weaker", "weaker → stronger"],
-                    {"default": "stronger → weaker"},
-                ),
             }
         }
 
@@ -191,19 +190,22 @@ class DiffSynthControlnetAdvancedNode:
     FUNCTION = "apply"
     CATEGORY = "IXIWORKS/Image"
 
-    def apply(self, model, start_percent, end_percent,
-              stronger, weaker, fade, fade_direction):
+    def apply(self, model, strength, start, end, fade, low):
         model_sampling = model.get_model_object("model_sampling")
-        sigma_start = model_sampling.percent_to_sigma(start_percent)
-        sigma_end = model_sampling.percent_to_sigma(end_percent)
+        sigma_start = model_sampling.percent_to_sigma(start)
+        sigma_end = model_sampling.percent_to_sigma(end)
 
-        if fade_direction == "stronger → weaker":
-            str_begin, str_finish = stronger, weaker
+        if fade == "fade out":
+            str_begin, str_finish = strength, low
+            use_fade = True
+        elif fade == "fade in":
+            str_begin, str_finish = low, strength
+            use_fade = True
         else:
-            str_begin, str_finish = weaker, stronger
+            str_begin, str_finish = strength, strength
+            use_fade = False
 
-        use_fade = fade
-        uniform_scale = stronger
+        uniform_scale = strength
 
         m = model.clone()
         existing_patches = m.model_options.get("patches", {})
