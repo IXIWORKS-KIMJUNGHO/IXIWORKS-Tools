@@ -14,8 +14,8 @@ class SwitchBooleanNode:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "on_false": (ANY,),
-                "on_true": (ANY,),
+                "on_false": (ANY, {"lazy": True}),
+                "on_true": (ANY, {"lazy": True}),
                 "boolean_switch": ("BOOLEAN", {"default": True}),
             }
         }
@@ -24,6 +24,12 @@ class SwitchBooleanNode:
     RETURN_NAMES = ("output",)
     FUNCTION = "switch"
     CATEGORY = "IXIWORKS/Utils"
+
+    def check_lazy_status(self, on_false, on_true, boolean_switch):
+        needed = "on_true" if boolean_switch else "on_false"
+        if (boolean_switch and on_true is None) or (not boolean_switch and on_false is None):
+            return [needed]
+        return []
 
     def switch(self, on_false, on_true, boolean_switch):
         return (on_true if boolean_switch else on_false,)
@@ -94,7 +100,7 @@ class SwitchCaseNode:
             "select": ("INT", {"default": 0, "min": 0, "max": cls.MAX_INPUTS - 1, "step": 1}),
         }
         optional = {
-            f"input_{i}": (ANY,)
+            f"input_{i}": (ANY, {"lazy": True})
             for i in range(cls.MAX_INPUTS)
         }
         return {"required": required, "optional": optional}
@@ -103,6 +109,13 @@ class SwitchCaseNode:
     RETURN_NAMES = ("output",)
     FUNCTION = "switch"
     CATEGORY = "IXIWORKS/Utils"
+
+    def check_lazy_status(self, count, select, **kwargs):
+        index = max(0, min(select, count - 1))
+        key = f"input_{index}"
+        if kwargs.get(key) is None:
+            return [key]
+        return []
 
     def switch(self, count, select, **kwargs):
         index = max(0, min(select, count - 1))
