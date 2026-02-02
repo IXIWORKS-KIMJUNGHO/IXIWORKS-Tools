@@ -157,10 +157,71 @@ class ControlNetPreprocessorNode:
         return (torch.stack(results),)
 
 
+class DiffSynthControlnetAdvancedNode:
+    """QwenImageDiffsynthControlnet의 출력 MODEL을 받아
+    start_percent / end_percent 스텝 범위 제어를 추가하는 래퍼 노드."""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "model": ("MODEL",),
+                "start_percent": ("FLOAT", {
+                    "default": 0.0, "min": 0.0, "max": 1.0, "step": 0.001,
+                }),
+                "end_percent": ("FLOAT", {
+                    "default": 1.0, "min": 0.0, "max": 1.0, "step": 0.001,
+                }),
+            }
+        }
+
+    RETURN_TYPES = ("MODEL",)
+    RETURN_NAMES = ("model",)
+    FUNCTION = "apply"
+    CATEGORY = "IXIWORKS/Image"
+
+    def apply(self, model, start_percent, end_percent):
+        if start_percent == 0.0 and end_percent == 1.0:
+            return (model,)
+
+        model_sampling = model.get_model_object("model_sampling")
+        sigma_start = model_sampling.percent_to_sigma(start_percent)
+        sigma_end = model_sampling.percent_to_sigma(end_percent)
+
+        m = model.clone()
+        existing_patches = m.model_options.get("patches", {})
+        double_block_patches = existing_patches.get("double_block", [])
+
+        wrapped = []
+        for patch in double_block_patches:
+            def make_wrapper(original_patch, s_start, s_end):
+                def wrapper(kwargs):
+                    t_opts = kwargs.get("transformer_options")
+                    if t_opts is not None:
+                        sigmas = t_opts.get("sigmas")
+                        if sigmas is not None:
+                            sigma = sigmas[0].item()
+                            if sigma > s_start or sigma < s_end:
+                                return kwargs
+                    return original_patch(kwargs)
+                return wrapper
+            wrapped.append(make_wrapper(patch, sigma_start, sigma_end))
+
+        if wrapped:
+            m.model_options = m.model_options.copy()
+            patches = m.model_options.get("patches", {}).copy()
+            patches["double_block"] = wrapped
+            m.model_options["patches"] = patches
+
+        return (m,)
+
+
 NODE_CLASS_MAPPINGS = {
     "ControlNetPreprocessor": ControlNetPreprocessorNode,
+    "DiffSynthControlnetAdvanced": DiffSynthControlnetAdvancedNode,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "ControlNetPreprocessor": "ControlNet Preprocessor (Image)",
+    "DiffSynthControlnetAdvanced": "DiffSynth ControlNet Advanced (Image)",
 }
