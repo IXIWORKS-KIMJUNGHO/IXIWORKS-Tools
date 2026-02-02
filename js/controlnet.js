@@ -87,7 +87,7 @@ app.registerExtension({
                     const gx = pad;
                     const gy = y + 4;
                     const gw = (widgetWidth || node.size[0]) - pad * 2;
-                    const gh = (h || 65) - 8;
+                    const gh = (h || 120) - 8;
                     const maxS = 2.0;
 
                     const val = (name, def) => {
@@ -114,11 +114,11 @@ app.registerExtension({
                     const toY = (v) => gy + gh - Math.min(v / maxS, 1.0) * gh;
                     const fromY = (py) => {
                         const raw = (gy + gh - py) / gh * maxS;
-                        return Math.round(Math.max(0, Math.min(maxS, raw)) * 100) / 100;
+                        return Math.round(Math.max(0, Math.min(maxS, raw)) * 10) / 10;
                     };
                     const fromX = (px) => {
                         const raw = (px - gx) / gw;
-                        return Math.round(Math.max(0, Math.min(1, raw)) * 100) / 100;
+                        return Math.round(Math.max(0, Math.min(1, raw)) * 10) / 10;
                     };
 
                     return {
@@ -212,13 +212,13 @@ app.registerExtension({
                     const s1y = p.toY(p.s1);
                     ctx.textAlign = "left";
                     ctx.fillText(
-                        p.s0.toFixed(2), p.sx + 6,
+                        p.s0.toFixed(1), p.sx + 6,
                         s0y < p.gy + 14 ? s0y + 14 : s0y - 5
                     );
                     if (Math.abs(p.s0 - p.s1) > 0.01) {
                         ctx.textAlign = "right";
                         ctx.fillText(
-                            p.s1.toFixed(2), p.ex - 6,
+                            p.s1.toFixed(1), p.ex - 6,
                             s1y < p.gy + 14 ? s1y + 14 : s1y - 5
                         );
                     }
@@ -290,7 +290,7 @@ app.registerExtension({
                 },
 
                 computeSize: function () {
-                    return [0, 65];
+                    return [0, 120];
                 },
             });
 
@@ -322,7 +322,7 @@ app.registerExtension({
                     // fade on → show graph, fade off → hide
                     if (fadeOn) {
                         w.type = "custom";
-                        w.computeSize = w._origComputeSize || (() => [0, 65]);
+                        w.computeSize = w._origComputeSize || (() => [0, 120]);
                     } else {
                         if (!w._origComputeSize) w._origComputeSize = w.computeSize;
                         w.type = "hidden";
