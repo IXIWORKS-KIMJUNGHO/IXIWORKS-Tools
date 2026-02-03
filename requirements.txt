@@ -18,6 +18,9 @@ opencv-python-headless
 # Required for ControlNet preprocessor node
 controlnet-aux
 
+# Required for PromptStyleFilter node (Claude API)
+anthropic
+
 # Optional: 4-bit quantization support (reduces VRAM usage)
 # Uncomment if you want to use use_4bit=True option:
 # bitsandbytes
