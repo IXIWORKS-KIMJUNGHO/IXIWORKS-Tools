@@ -552,6 +552,117 @@ These keywords override LoRA styles and MUST be removed."""
             return (prompts,)
 
 
+class PromptPoseFilterNode:
+    """Filter pose-related keywords from prompt when using Pose ControlNet."""
+
+    SEPARATOR = "\n---PROMPT_SEPARATOR---\n"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "prompt": ("STRING", {"forceInput": True}),
+                "api_key": ("STRING", {"default": ""}),
+            },
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("filtered_prompt",)
+    FUNCTION = "filter_prompt"
+    CATEGORY = "StoryBoard"
+    INPUT_IS_LIST = True
+    OUTPUT_IS_LIST = (True,)
+
+    def filter_prompt(self, prompt, api_key):
+        # Handle list inputs
+        key = api_key[0] if isinstance(api_key, list) else api_key
+        prompts = prompt if isinstance(prompt, list) else [prompt]
+
+        if not key:
+            logger.warning("[StoryBoard] PromptPoseFilterNode: No API key provided, returning original prompts")
+            return (prompts,)
+
+        # Combine all prompts with separator
+        combined_input = self.SEPARATOR.join([f"[{i+1}] {p}" for i, p in enumerate(prompts)])
+
+        system_prompt = """You are a prompt optimizer that removes pose-related keywords for Pose ControlNet usage.
+
+## REMOVE these pose/posture keywords:
+- Body postures: standing, sitting, kneeling, lying down, crouching, leaning, bending, squatting
+- Actions/movements: walking, running, jumping, dancing, waving, reaching, stretching
+- Arm positions: arms crossed, arms raised, arms akimbo, hands on hips, pointing, holding, arms behind back
+- Hand gestures: peace sign, thumbs up, fist, open palm, clasped hands
+- Leg positions: legs crossed, one leg raised, spread legs, kicking
+- Head/gaze direction: looking at viewer, looking away, looking up, looking down, looking left/right, head tilted, turned head
+- Body orientation: from behind, from side, profile view, back view, three-quarter view
+- Full body descriptors: full body pose, dynamic pose, action pose, relaxed pose, tense pose
+
+## KEEP these (do NOT remove):
+- Camera angles: low angle, high angle, eye level, bird's eye view, worm's eye view
+- Camera shots: wide shot, medium shot, close-up, extreme close-up, full shot
+- Composition: rule of thirds, centered, off-center, leading lines
+- Facial expressions: smiling, serious, surprised, angry, sad (expressions are NOT poses)
+- Scene descriptions, lighting, colors, clothing, background
+
+## Output Format:
+- Multiple prompts separated by "---PROMPT_SEPARATOR---"
+- Format: [1] filtered_prompt
+- Keep the prompt natural and coherent after removing pose keywords"""
+
+        try:
+            import anthropic
+            client = anthropic.Anthropic(api_key=key)
+
+            logger.info(f"[StoryBoard] PromptPoseFilterNode: Filtering {len(prompts)} prompts for pose keywords")
+
+            response = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=4096,
+                system=system_prompt,
+                messages=[
+                    {"role": "user", "content": f"Remove pose keywords from these prompts:\n\n{combined_input}"}
+                ]
+            )
+
+            result_text = response.content[0].text.strip()
+            logger.info(f"[StoryBoard] PromptPoseFilterNode: Received response from Claude API")
+
+            # Split and parse results
+            filtered_results = []
+            parts = result_text.split("---PROMPT_SEPARATOR---")
+
+            for part in parts:
+                part = part.strip()
+                # Remove [number] prefix if present
+                if part.startswith("["):
+                    idx = part.find("]")
+                    if idx != -1:
+                        part = part[idx+1:].strip()
+                if part:
+                    filtered_results.append(part)
+
+            # Ensure we have the same number of outputs
+            if len(filtered_results) != len(prompts):
+                logger.warning(f"[StoryBoard] PromptPoseFilterNode: Output count mismatch ({len(filtered_results)} vs {len(prompts)}), returning originals")
+                return (prompts,)
+
+            # Log each filtered result (truncated for readability)
+            for i, (orig, filtered) in enumerate(zip(prompts, filtered_results)):
+                orig_preview = orig[:50] + "..." if len(orig) > 50 else orig
+                filtered_preview = filtered[:80] + "..." if len(filtered) > 80 else filtered
+                logger.info(f"[StoryBoard] PromptPoseFilterNode: [{i+1}] {orig_preview} → {filtered_preview}")
+
+            logger.info(f"[StoryBoard] PromptPoseFilterNode: Done - {len(filtered_results)} prompts filtered")
+            return (filtered_results,)
+
+        except ImportError:
+            logger.error("[StoryBoard] PromptPoseFilterNode: anthropic package not installed")
+            return (prompts,)
+        except Exception as e:
+            logger.error(f"[StoryBoard] PromptPoseFilterNode: API error - {e}")
+            return (prompts,)
+
+
 # Node class mappings for ComfyUI
 NODE_CLASS_MAPPINGS = {
     "JsonParserNode": JsonParserNode,
@@ -560,6 +671,7 @@ NODE_CLASS_MAPPINGS = {
     "SelectIndexNode": SelectIndexNode,
     "MergeStringsNode": MergeStringsNode,
     "PromptStyleFilter": PromptStyleFilterNode,
+    "PromptPoseFilter": PromptPoseFilterNode,
 }
 
 # Display name mappings for ComfyUI UI
@@ -570,4 +682,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "SelectIndexNode": "Select Index (StoryBoard)",
     "MergeStringsNode": "Merge Strings (StoryBoard)",
     "PromptStyleFilter": "Prompt Style Filter (StoryBoard)",
+    "PromptPoseFilter": "Prompt Pose Filter (StoryBoard)",
 }
