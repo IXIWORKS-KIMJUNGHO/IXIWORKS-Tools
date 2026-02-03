@@ -12,12 +12,23 @@ import folder_paths
 
 logger = logging.getLogger(__name__)
 
+# Register prompt folder for JSON files
+PROMPT_FOLDER = os.path.join(folder_paths.get_input_directory(), "prompt")
+os.makedirs(PROMPT_FOLDER, exist_ok=True)
+folder_paths.folder_names_and_paths["storyboard_prompts"] = (
+    [PROMPT_FOLDER],
+    {".json"},
+)
+
 
 class JsonParserNode:
     @classmethod
     def INPUT_TYPES(s):
+        files = folder_paths.get_filename_list("storyboard_prompts")
         return {
-            "required": {"file_name": ("STRING", {"default": "prompt.json"})},
+            "required": {
+                "JSON": (sorted(files) if files else ["(no files)"],),
+            },
         }
 
     RETURN_TYPES = ("ZIPPED_PROMPT", "ZIPPED_PROMPT", "INT")
@@ -26,11 +37,20 @@ class JsonParserNode:
     CATEGORY = "StoryBoard"
     OUTPUT_IS_LIST = (True, True, False)
 
-    def parse_text(self, file_name):
-        # Use ComfyUI's input directory
-        input_dir = folder_paths.get_input_directory()
-        file_path = os.path.join(input_dir, "prompt", file_name)
-        file_path = os.path.abspath(os.path.normpath(file_path))
+    @classmethod
+    def IS_CHANGED(s, JSON):
+        # Refresh when file changes
+        file_path = folder_paths.get_full_path("storyboard_prompts", JSON)
+        if file_path and os.path.exists(file_path):
+            return os.path.getmtime(file_path)
+        return float("nan")
+
+    def parse_text(self, JSON):
+        # Use registered folder path
+        file_path = folder_paths.get_full_path("storyboard_prompts", JSON)
+        if not file_path or not os.path.exists(file_path):
+            logger.error(f"[StoryBoard] JsonParserNode: File not found '{json_file}'")
+            return ([("", "", "", "")], [("", "", "", "", "", "")], 0)
 
         logger.info(f"[StoryBoard] JsonParserNode: file path '{file_path}'")
         try:
