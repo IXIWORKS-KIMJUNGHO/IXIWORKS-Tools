@@ -280,23 +280,28 @@ class MergeStringsNode:
 LORA_STYLE_PRESETS = {
     "inksketch": {
         "name": "Ink Sketch",
-        "color_mode": "monochrome",  # black and white only
+        "color_mode": "inksketch",  # specific handling for ink sketch
+        "add_keywords": "monochrome, high contrast linework, detailed crosshatching, sketch texture",
     },
     "ink-wash": {
         "name": "Ink Wash",
-        "color_mode": "monochrome",  # grayscale only
+        "color_mode": "inkwash",  # specific handling for ink wash
+        "add_keywords": "atmospheric tonal depth, grayscale",
     },
     "pen-ink-illustration": {
         "name": "Pen & Ink Illustration",
-        "color_mode": "monochrome",  # black and white, sepia
+        "color_mode": "penink",  # specific handling
+        "add_keywords": "black and white, high contrast ink-illustration",
     },
     "ink-watercolor": {
         "name": "Ink and Watercolor",
-        "color_mode": "warm-muted",  # warm sepia, earthy, muted tones only
+        "color_mode": "inkwatercolor",  # specific handling
+        "add_keywords": "warm earthy tones, soft watercolor background",
     },
     "watercolor-illustration": {
         "name": "Watercolor Illustration",
-        "color_mode": "watercolor",  # soft, natural colors - no harsh/digital
+        "color_mode": "watercolorillust",  # specific handling
+        "add_keywords": "vibrant warm palette, gentle wash effects with soft color bleeding",
     },
 }
 
@@ -341,94 +346,149 @@ class PromptStyleFilterNode:
         if color_mode == "full-color":
             return (prompts,)
 
+        # Get style-specific keywords to add
+        add_keywords = style_info.get("add_keywords", "")
+
         # Combine all prompts with separator
         combined_input = self.SEPARATOR.join([f"[{i+1}] {p}" for i, p in enumerate(prompts)])
 
-        if color_mode == "monochrome":
-            system_prompt = f"""You are a prompt filter for monochrome image generation.
+        # Common instruction for all styles
+        keep_instruction = """
+## ALWAYS KEEP (never modify these):
+- Composition: rule of thirds, leading lines, centered, off-center, etc.
+- Camera angle: wide shot, medium shot, close-up, eye-level, low angle, high angle, etc.
+- Camera position descriptions
+- Subject pose and position descriptions
+- Framing descriptions"""
 
-## Task
-Remove ALL color-related words and phrases from the prompt. The target style "{style_name}" is MONOCHROME (black and white / grayscale only).
+        if color_mode == "inksketch":
+            system_prompt = f"""You are a prompt optimizer for ink sketch style image generation.
 
-## What to REMOVE:
-- All color names (red, blue, green, golden, orange, pink, purple, neon, etc.)
-- Colored lighting (neon lights, neon glow, warm light, cool light, golden hour, colored illumination)
-- Color descriptions (vivid colors, bright colors, colorful, vibrant, saturated)
-- Colored reflections (shimmering colored pools, rainbow reflections)
-- Color temperature terms (warm tones, cool tones, sepia)
+## Transform these elements for ink sketch style:
 
-## What to KEEP (do not modify):
-- Subject descriptions (person, clothing, pose, expression)
-- Composition (camera angle, shot type, framing)
-- Lighting intensity (bright, dim, harsh, soft - without color)
-- Atmosphere (dark, moody, shadows, contrast, silhouette, atmospheric)
-- Location, setting, textures, materials
+### Colors → REMOVE ALL:
+- Remove all color adjectives: beige, olive, white, red, blue, golden, etc.
+- "beige hoodie" → "hoodie", "red car" → "car"
 
-## Output Format:
-- Multiple prompts separated by "---PROMPT_SEPARATOR---"
-- Format: [1] filtered_prompt---PROMPT_SEPARATOR---[2] filtered_prompt
-- Return ONLY the filtered prompts, no explanations"""
+### Lighting → Convert to contrast-based:
+- "golden hour" → "low angle dramatic lighting"
+- "warm glow" → "strong directional lighting"
+- "bathed in sunlight" → "harsh angular shadows"
+- Keep: shadows, contrast, silhouette
 
-        elif color_mode == "warm-muted":
-            system_prompt = f"""You are a prompt filter for warm-toned ink and watercolor style image generation.
-
-## Task
-Remove harsh/vivid colors but KEEP warm, earthy, muted tones. The target style "{style_name}" uses warm sepia, earthy, and muted watercolor tones.
-
-## What to REMOVE:
-- Neon colors and lighting (neon lights, neon glow, neon-lit)
-- Vivid/saturated colors (vivid, vibrant, saturated, bright colors)
-- Cool tones (cool light, blue tones, cyan, cold)
-- Modern artificial lighting colors
-- Rainbow, iridescent effects
-
-## What to KEEP (these are compatible):
-- Warm tones (warm, golden, amber, sepia, earthy)
-- Muted colors (muted, soft, gentle, faded)
-- Natural warm light (afternoon light, sunset warmth, warm sunlight)
-- Earthy colors (brown, ochre, terracotta, dusty)
-- Watercolor descriptors (soft wash, blending, tones)
-
-## What to KEEP (do not modify):
-- Subject descriptions (person, clothing, pose, expression)
-- Composition (camera angle, shot type, framing)
-- Atmosphere and mood
-- Location, setting, textures, materials
+### Technique → ADD at START:
+{add_keywords}
+{keep_instruction}
 
 ## Output Format:
 - Multiple prompts separated by "---PROMPT_SEPARATOR---"
-- Format: [1] filtered_prompt---PROMPT_SEPARATOR---[2] filtered_prompt
-- Return ONLY the filtered prompts, no explanations"""
+- Format: [1] filtered_prompt
+- Style keywords at START of prompt"""
 
-        elif color_mode == "watercolor":
-            system_prompt = f"""You are a prompt filter for watercolor illustration style image generation.
+        elif color_mode == "inkwash":
+            system_prompt = f"""You are a prompt optimizer for ink wash style image generation.
 
-## Task
-Remove harsh/digital/photorealistic elements. The target style "{style_name}" uses soft, natural watercolor aesthetics with gentle color blending.
+## Transform these elements for ink wash style:
 
-## What to REMOVE:
-- Neon lights and artificial colored lighting (neon, neon-lit, LED)
-- Photorealistic/digital terms (photorealistic, hyper-realistic, raw photo, 8k, HDR)
-- Harsh contrast terms (harsh shadows, sharp contrast, hard edges)
-- Modern digital effects (lens flare, bokeh, chromatic aberration)
+### Colors:
+- KEEP muted colors: beige, olive, gray, brown
+- REMOVE vivid colors: neon, vibrant, bright saturated
+- REMOVE pure white/black adjectives from objects
 
-## What to KEEP (these are compatible):
-- Soft, natural colors (any natural color is fine)
-- Warm lighting (golden hour, afternoon light, sunset, dappled light)
-- Watercolor descriptors (soft, wet, blending, wash, gentle, diffused)
-- Vibrant but natural colors (vibrant, colorful - these are OK)
-- Organic textures and natural materials
+### Lighting → Convert to atmospheric:
+- "bright sunlight" → "morning light casting long diagonal shadows"
+- Add: "wet pavement", "puddle reflections"
 
-## What to KEEP (do not modify):
-- Subject descriptions (person, clothing, pose, expression)
-- Composition (camera angle, shot type, framing)
-- Atmosphere and mood
-- Location, setting, textures, materials
+### Technique → ADD at END:
+{add_keywords}
+
+### Special: CONDENSE the prompt
+- Remove verbose explanations, keep core descriptions
+{keep_instruction}
 
 ## Output Format:
 - Multiple prompts separated by "---PROMPT_SEPARATOR---"
-- Format: [1] filtered_prompt---PROMPT_SEPARATOR---[2] filtered_prompt
-- Return ONLY the filtered prompts, no explanations"""
+- Format: [1] filtered_prompt
+- Style keywords at END of prompt"""
+
+        elif color_mode == "penink":
+            system_prompt = f"""You are a prompt optimizer for pen and ink illustration style image generation.
+
+## Transform these elements for pen & ink style:
+
+### Colors:
+- KEEP muted colors: beige, olive, white, gray, brown
+- REMOVE vivid/neon colors
+
+### Lighting → Convert with crosshatching:
+- "bathed in glow" → "low angle afternoon light casting long dramatic shadows"
+- "well-defined shadows" → "well-defined shadows with crosshatching"
+
+### Technique → ENHANCE details and ADD at END:
+- "brick buildings" → "detailed brick buildings"
+- "cafe sign" → "hanging cafe sign"
+- "city street" → "cobblestone city street"
+- Add: "intricate linework on architectural details"
+- {add_keywords}
+{keep_instruction}
+
+## Output Format:
+- Multiple prompts separated by "---PROMPT_SEPARATOR---"
+- Format: [1] filtered_prompt
+- Style keywords at END of prompt"""
+
+        elif color_mode == "inkwatercolor":
+            system_prompt = f"""You are a prompt optimizer for ink and watercolor illustration style image generation.
+
+## Transform these elements for ink watercolor style:
+
+### Colors:
+- KEEP ALL warm colors: golden hour, warm glow, warm sunlight, amber
+- KEEP muted colors: beige, olive, brown, earthy
+- REMOVE only: neon, cold harsh colors
+
+### Lighting → Keep warm, enhance atmosphere:
+- Keep all warm lighting descriptions
+- Add: "loose ink linework with watercolor washes"
+
+### Technique → ENHANCE with charm and ADD at END:
+- "city street" → "dusty city street"
+- "brick buildings" → "charming brick buildings"
+- "cafe sign" → "hand-painted cafe sign"
+- Consider adding: "a stray dog nearby", "pigeons"
+- {add_keywords}
+{keep_instruction}
+
+## Output Format:
+- Multiple prompts separated by "---PROMPT_SEPARATOR---"
+- Format: [1] filtered_prompt
+- Style keywords at END of prompt"""
+
+        elif color_mode == "watercolorillust":
+            system_prompt = f"""You are a prompt optimizer for watercolor illustration style image generation.
+
+## Transform these elements for watercolor illustration style:
+
+### Colors → KEEP ALL:
+- Keep all colors including vibrant (vibrant, colorful, golden, warm)
+- Remove only: neon, photorealistic, hyper-realistic, HDR, 8k
+
+### Lighting → Keep and enhance:
+- Keep all warm/natural lighting
+- Add: "dappled light filtering through plane trees"
+
+### Technique → ENHANCE with color and ADD at END:
+- "city street" → "sunlit cobblestone city street"
+- "brick buildings" → "colorful brick buildings"
+- "cafe sign" → "charming cafe sign with striped awning"
+- Add: "wet-on-wet blending with soft edges"
+- {add_keywords}
+{keep_instruction}
+
+## Output Format:
+- Multiple prompts separated by "---PROMPT_SEPARATOR---"
+- Format: [1] filtered_prompt
+- Style keywords at END of prompt"""
 
         try:
             import anthropic
