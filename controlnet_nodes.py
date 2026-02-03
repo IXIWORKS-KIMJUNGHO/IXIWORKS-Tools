@@ -263,6 +263,6 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "ControlNetPreprocessor": "ControlNet Preprocessor (Image)",
-    "DiffSynthControlnetAdvanced": "DiffSynth ControlNet Advanced (Image)",
+    "ControlNetPreprocessor": "ControlNet Preprocessor",
+    "DiffSynthControlnetAdvanced": "ControlNet Advanced (QWEN, ZIT)",
 }
