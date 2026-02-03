@@ -98,6 +98,15 @@ app.registerExtension({
                         ctx.stroke();
                     }
 
+                    // Y-axis labels (high/low)
+                    ctx.font = "9px monospace";
+                    ctx.fillStyle = "rgba(255,255,255,0.4)";
+                    ctx.textAlign = "left";
+                    const highVal = Math.max(p.strength, p.low);
+                    const lowVal = Math.min(p.strength, p.low);
+                    ctx.fillText("high " + highVal.toFixed(1), p.gx + 4, p.gy + 12);
+                    ctx.fillText("low " + lowVal.toFixed(1), p.gx + 4, p.gy + p.gh - 4);
+
                     // Fill under curve
                     ctx.fillStyle = "rgba(179,157,219,0.2)";
                     ctx.beginPath();
@@ -141,31 +150,23 @@ app.registerExtension({
 
                     // Endpoint dots (larger when dragging)
                     ctx.fillStyle = "#B39DDB";
-                    const r0 = node._graphDrag === "s0" ? 5 : 3;
+                    const r0 = node._graphDrag === "s0" ? 6 : 4;
                     ctx.beginPath();
                     ctx.arc(p.sx, p.toY(p.s0), r0, 0, Math.PI * 2);
                     ctx.fill();
-                    const r1 = node._graphDrag === "s1" ? 5 : 3;
+                    const r1 = node._graphDrag === "s1" ? 6 : 4;
                     ctx.beginPath();
                     ctx.arc(p.ex, p.toY(p.s1), r1, 0, Math.PI * 2);
                     ctx.fill();
 
-                    // Strength value labels
-                    ctx.font = "10px monospace";
-                    ctx.fillStyle = "rgba(179,157,219,0.9)";
-                    const s0y = p.toY(p.s0);
-                    const s1y = p.toY(p.s1);
-                    ctx.textAlign = "left";
-                    ctx.fillText(
-                        p.s0.toFixed(1), p.sx + 6,
-                        s0y < p.gy + 14 ? s0y + 14 : s0y - 5
-                    );
-                    if (Math.abs(p.s0 - p.s1) > 0.01) {
-                        ctx.textAlign = "right";
-                        ctx.fillText(
-                            p.s1.toFixed(1), p.ex - 6,
-                            s1y < p.gy + 14 ? s1y + 14 : s1y - 5
-                        );
+                    // Fade direction indicator
+                    if (p.fade !== "none") {
+                        ctx.font = "10px monospace";
+                        ctx.fillStyle = "rgba(179,157,219,0.7)";
+                        ctx.textAlign = "center";
+                        const midX = (p.sx + p.ex) / 2;
+                        const arrow = p.fade === "fade out" ? "▼" : "▲";
+                        ctx.fillText(arrow, midX, p.gy + p.gh / 2);
                     }
 
                     ctx.restore();
@@ -235,7 +236,7 @@ app.registerExtension({
                 },
 
                 computeSize: function () {
-                    return [0, 120];
+                    return [0, 360];
                 },
             });
 

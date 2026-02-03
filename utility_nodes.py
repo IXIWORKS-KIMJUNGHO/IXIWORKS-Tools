@@ -197,14 +197,11 @@ class ImageToListNode:
 
     @classmethod
     def INPUT_TYPES(cls):
+        # Only count is required, images are added dynamically via JS
         required = {
             "count": ("INT", {"default": 4, "min": 1, "max": cls.MAX_INPUTS, "step": 1}),
         }
-        optional = {
-            f"image_{i}": ("IMAGE",)
-            for i in range(1, cls.MAX_INPUTS + 1)
-        }
-        return {"required": required, "optional": optional}
+        return {"required": required}
 
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("images",)
