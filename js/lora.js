@@ -32,7 +32,7 @@ app.registerExtension({
                     const gx = pad;
                     const gy = y + 4;
                     const gw = (widgetWidth || node.size[0]) - pad * 2;
-                    const gh = (h || 120) - 8;
+                    const gh = (h || 360) - 8;
                     const maxS = 2.0;
 
                     const val = (name, def) => {
@@ -268,7 +268,7 @@ app.registerExtension({
                     // fade on → show graph, fade off → hide
                     if (fadeOn) {
                         w.type = "custom";
-                        w.computeSize = w._origComputeSize || (() => [0, 120]);
+                        w.computeSize = w._origComputeSize || (() => [0, 360]);
                     } else {
                         if (!w._origComputeSize) w._origComputeSize = w.computeSize;
                         w.type = "hidden";

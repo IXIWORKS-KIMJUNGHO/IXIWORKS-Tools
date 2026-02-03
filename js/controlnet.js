@@ -87,26 +87,26 @@ app.registerExtension({
                     const gx = pad;
                     const gy = y + 4;
                     const gw = (widgetWidth || node.size[0]) - pad * 2;
-                    const gh = (h || 120) - 8;
+                    const gh = (h || 360) - 8;
                     const maxS = 2.0;
 
                     const val = (name, def) => {
                         const w = node.widgets.find((w) => w.name === name);
                         return w != null ? w.value : def;
                     };
-                    const strength = val("strength", 1.0);
+                    const high = val("high", 1.0);
+                    const low = val("low", 0.0);
                     const startP = val("start", 0.0);
                     const endP = val("end", 1.0);
                     const fade = val("fade", "none");
-                    const low = val("low", 0.0);
 
                     let s0, s1;
                     if (fade === "fade out") {
-                        s0 = strength; s1 = low;
+                        s0 = high; s1 = low;
                     } else if (fade === "fade in") {
-                        s0 = low; s1 = strength;
+                        s0 = low; s1 = high;
                     } else {
-                        s0 = strength; s1 = strength;
+                        s0 = high; s1 = high;
                     }
 
                     const sx = gx + startP * gw;
@@ -123,7 +123,7 @@ app.registerExtension({
 
                     return {
                         gx, gy, gw, gh, maxS,
-                        strength, startP, endP, fade, low,
+                        high, low, startP, endP, fade,
                         s0, s1, sx, ex, toY, fromY, fromX, val,
                     };
                 },
@@ -157,10 +157,8 @@ app.registerExtension({
                     ctx.font = "9px monospace";
                     ctx.fillStyle = "rgba(255,255,255,0.4)";
                     ctx.textAlign = "left";
-                    const highVal = Math.max(p.strength, p.low);
-                    const lowVal = Math.min(p.strength, p.low);
-                    ctx.fillText("high " + highVal.toFixed(1), p.gx + 4, p.gy + 12);
-                    ctx.fillText("low " + lowVal.toFixed(1), p.gx + 4, p.gy + p.gh - 4);
+                    ctx.fillText("high " + p.high.toFixed(1), p.gx + 4, p.gy + 12);
+                    ctx.fillText("low " + p.low.toFixed(1), p.gx + 4, p.gy + p.gh - 4);
 
                     // Fill under curve
                     ctx.fillStyle = "rgba(179,157,219,0.2)";
@@ -266,11 +264,11 @@ app.registerExtension({
                         if (drag === "s0") {
                             const v = p.fromY(my);
                             if (p.fade === "fade in") setVal("low", v);
-                            else setVal("strength", v);
+                            else setVal("high", v);
                         } else if (drag === "s1") {
                             const v = p.fromY(my);
                             if (p.fade === "fade out") setVal("low", v);
-                            else setVal("strength", v);
+                            else setVal("high", v);
                         } else if (drag === "start") {
                             setVal("start", Math.min(p.fromX(mx), p.val("end", 1)));
                         } else if (drag === "end") {
@@ -301,35 +299,18 @@ app.registerExtension({
         nodeType.prototype._updateFadeWidgets = function (fadeValue) {
             const fadeOn = fadeValue !== "none";
             for (const w of this.widgets) {
-                if (w.name === "strength") {
-                    // fade off → show strength widget, fade on → hide (graph controls it)
-                    if (fadeOn) {
-                        w.type = "hidden";
-                        w.computeSize = () => [0, -4];
-                    } else {
-                        w.type = "number";
-                        w.computeSize = undefined;
-                    }
-                } else if (w.name === "low") {
-                    // fade on → show low widget, fade off → hide
-                    if (fadeOn) {
-                        w.type = "number";
-                        w.computeSize = undefined;
-                    } else {
-                        w.type = "hidden";
-                        w.computeSize = () => [0, -4];
-                    }
-                } else if (w.name === "strength_graph") {
+                if (w.name === "strength_graph") {
                     // fade on → show graph, fade off → hide
                     if (fadeOn) {
                         w.type = "custom";
-                        w.computeSize = w._origComputeSize || (() => [0, 120]);
+                        w.computeSize = w._origComputeSize || (() => [0, 360]);
                     } else {
                         if (!w._origComputeSize) w._origComputeSize = w.computeSize;
                         w.type = "hidden";
                         w.computeSize = () => [0, -4];
                     }
                 }
+                // high and low widgets are always visible
             }
             this.setSize(this.computeSize());
             app.graph.setDirtyCanvas(true, true);

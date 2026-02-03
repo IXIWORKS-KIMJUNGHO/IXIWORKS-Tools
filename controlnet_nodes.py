@@ -166,8 +166,11 @@ class DiffSynthControlnetAdvancedNode:
         return {
             "required": {
                 "model": ("MODEL",),
-                "strength": ("FLOAT", {
+                "high": ("FLOAT", {
                     "default": 1.0, "min": 0.0, "max": 2.0, "step": 0.01,
+                }),
+                "low": ("FLOAT", {
+                    "default": 0.0, "min": 0.0, "max": 2.0, "step": 0.01,
                 }),
                 "start": ("FLOAT", {
                     "default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01,
@@ -179,9 +182,6 @@ class DiffSynthControlnetAdvancedNode:
                     ["none", "fade out", "fade in"],
                     {"default": "none"},
                 ),
-                "low": ("FLOAT", {
-                    "default": 0.0, "min": 0.0, "max": 2.0, "step": 0.01,
-                }),
             }
         }
 
@@ -190,22 +190,22 @@ class DiffSynthControlnetAdvancedNode:
     FUNCTION = "apply"
     CATEGORY = "IXIWORKS/Image"
 
-    def apply(self, model, strength, start, end, fade, low):
+    def apply(self, model, high, low, start, end, fade):
         model_sampling = model.get_model_object("model_sampling")
         sigma_start = model_sampling.percent_to_sigma(start)
         sigma_end = model_sampling.percent_to_sigma(end)
 
         if fade == "fade out":
-            str_begin, str_finish = strength, low
+            str_begin, str_finish = high, low
             use_fade = True
         elif fade == "fade in":
-            str_begin, str_finish = low, strength
+            str_begin, str_finish = low, high
             use_fade = True
         else:
-            str_begin, str_finish = strength, strength
+            str_begin, str_finish = high, high
             use_fade = False
 
-        uniform_scale = strength
+        uniform_scale = high
 
         m = model.clone()
         existing_patches = m.model_options.get("patches", {})
