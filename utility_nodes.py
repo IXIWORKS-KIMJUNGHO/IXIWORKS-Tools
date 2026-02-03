@@ -73,8 +73,8 @@ class JoinStringsNode:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "string_a": ("STRING", {"default": "", "multiline": True}),
-                "string_b": ("STRING", {"default": "", "multiline": True}),
+                "string_a": ("STRING", {"forceInput": True}),
+                "string_b": ("STRING", {"forceInput": True}),
             },
             "optional": {
                 "separator": ("STRING", {"default": " "}),
@@ -225,6 +225,59 @@ class ImageToListNode:
         return (result,)
 
 
+ASPECT_RATIOS = {
+    "1:1": (1, 1),
+    "4:3": (4, 3),
+    "3:4": (3, 4),
+    "16:9": (16, 9),
+    "9:16": (9, 16),
+    "21:9": (21, 9),
+    "9:21": (9, 21),
+    "3:2": (3, 2),
+    "2:3": (2, 3),
+}
+
+
+class EmptyLatentRatioNode:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "ratio": (list(ASPECT_RATIOS.keys()), {"default": "16:9"}),
+                "long_side": ("INT", {
+                    "default": 1024, "min": 256, "max": 4096, "step": 64,
+                }),
+                "batch_size": ("INT", {
+                    "default": 1, "min": 1, "max": 64,
+                }),
+            }
+        }
+
+    RETURN_TYPES = ("LATENT", "INT", "INT")
+    RETURN_NAMES = ("latent", "width", "height")
+    FUNCTION = "generate"
+    CATEGORY = "IXIWORKS/Utils"
+
+    def generate(self, ratio, long_side, batch_size):
+        import torch
+
+        w_ratio, h_ratio = ASPECT_RATIOS[ratio]
+
+        if w_ratio >= h_ratio:
+            width = long_side
+            height = int(long_side * h_ratio / w_ratio)
+        else:
+            height = long_side
+            width = int(long_side * w_ratio / h_ratio)
+
+        # Ensure divisible by 8 (latent space requirement)
+        width = (width // 8) * 8
+        height = (height // 8) * 8
+
+        latent = torch.zeros([batch_size, 4, height // 8, width // 8])
+        return ({"samples": latent}, width, height)
+
+
 class BypassNode:
     @classmethod
     def INPUT_TYPES(cls):
@@ -249,21 +302,23 @@ class BypassNode:
 NODE_CLASS_MAPPINGS = {
     "SwitchBoolean": SwitchBooleanNode,
     "StringToList": StringToListNode,
-    "JoinStrings": JoinStringsNode,
+    "ConcatStrings": JoinStringsNode,
     "SwitchCase": SwitchCaseNode,
     "SaveText": SaveTextNode,
     "LoadImageList": LoadImageListNode,
     "ImageToList": ImageToListNode,
     "Bypass": BypassNode,
+    "EmptyLatentRatio": EmptyLatentRatioNode,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "SwitchBoolean": "Switch (Utils)",
     "StringToList": "String to List (Utils)",
-    "JoinStrings": "Join Strings (Utils)",
+    "ConcatStrings": "Concat Strings (Utils)",
     "SwitchCase": "Switch Case (Utils)",
     "SaveText": "Save Text (Utils)",
     "LoadImageList": "Load Image List (Utils)",
     "ImageToList": "Image to List (Utils)",
     "Bypass": "Bypass (Utils)",
+    "EmptyLatentRatio": "Empty Latent (Ratio)",
 }
