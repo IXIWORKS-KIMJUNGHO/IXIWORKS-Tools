@@ -279,36 +279,24 @@ class MergeStringsNode:
 
 LORA_STYLE_PRESETS = {
     "inksketch": {
-        "description": "Monochrome ink sketch style",
-        "conflicts": ["vivid colors", "bright colors", "golden hour", "warm glow", "colorful", "orange-gold", "vibrant"],
+        "name": "Ink Sketch",
+        "color_mode": "monochrome",  # black and white only
     },
     "ink-wash": {
-        "description": "Traditional Asian ink wash painting style",
-        "conflicts": ["vivid colors", "bright colors", "golden hour", "warm glow", "neon", "vibrant"],
+        "name": "Ink Wash",
+        "color_mode": "monochrome",  # grayscale only
     },
     "pen-ink-illustration": {
-        "description": "Detailed pen and ink linework illustration",
-        "conflicts": ["vivid colors", "bright colors", "golden hour", "warm glow", "colorful", "soft blur"],
-    },
-    "watercolor-illustration": {
-        "description": "Soft watercolor style with gentle color bleeding",
-        "conflicts": ["harsh lighting", "neon", "sharp edges", "hyper-realistic", "photorealistic"],
+        "name": "Pen & Ink Illustration",
+        "color_mode": "monochrome",  # black and white, sepia
     },
     "ink-watercolor": {
-        "description": "Soft ink and watercolor blend with muted tones",
-        "conflicts": ["vivid", "harsh", "neon", "bright saturated", "hyper-realistic"],
+        "name": "Ink and Watercolor",
+        "color_mode": "warm-muted",  # warm sepia, earthy, muted tones only
     },
-    "anime": {
-        "description": "Japanese anime/manga style",
-        "conflicts": ["photorealistic", "realistic photo", "detailed skin texture", "pores", "hyper-realistic", "raw photo"],
-    },
-    "realistic": {
-        "description": "Photorealistic style",
-        "conflicts": ["anime", "cartoon", "illustration", "cel-shaded", "flat colors", "lineart"],
-    },
-    "3d-render": {
-        "description": "3D rendered CGI style",
-        "conflicts": ["2d", "flat", "hand-drawn", "sketch", "watercolor", "oil painting"],
+    "watercolor-illustration": {
+        "name": "Watercolor Illustration",
+        "color_mode": "watercolor",  # soft, natural colors - no harsh/digital
     },
 }
 
@@ -346,28 +334,101 @@ class PromptStyleFilterNode:
             return (prompts,)
 
         style_info = LORA_STYLE_PRESETS.get(style, {})
-        style_desc = style_info.get("description", style)
-        conflicts = style_info.get("conflicts", [])
+        style_name = style_info.get("name", style)
+        color_mode = style_info.get("color_mode", "full-color")
+
+        # Full color mode: no filtering needed
+        if color_mode == "full-color":
+            return (prompts,)
 
         # Combine all prompts with separator
         combined_input = self.SEPARATOR.join([f"[{i+1}] {p}" for i, p in enumerate(prompts)])
 
-        system_prompt = f"""You are a prompt optimizer for image generation.
-Your task is to filter prompts to make them compatible with a specific LoRA style.
+        if color_mode == "monochrome":
+            system_prompt = f"""You are a prompt filter for monochrome image generation.
 
-Target LoRA style: {style} ({style_desc})
+## Task
+Remove ALL color-related words and phrases from the prompt. The target style "{style_name}" is MONOCHROME (black and white / grayscale only).
 
-Known conflicting keywords/phrases for this style:
-{', '.join(conflicts)}
+## What to REMOVE:
+- All color names (red, blue, green, golden, orange, pink, purple, neon, etc.)
+- Colored lighting (neon lights, neon glow, warm light, cool light, golden hour, colored illumination)
+- Color descriptions (vivid colors, bright colors, colorful, vibrant, saturated)
+- Colored reflections (shimmering colored pools, rainbow reflections)
+- Color temperature terms (warm tones, cool tones, sepia)
 
-Instructions:
-1. Remove or replace any keywords that conflict with the target style
-2. Keep the core subject and composition intact
-3. Do not add new creative elements - only remove conflicts
-4. You will receive multiple numbered prompts separated by "---PROMPT_SEPARATOR---"
-5. Return each filtered prompt on the same format: [number] filtered_prompt
-6. Use the EXACT same separator "---PROMPT_SEPARATOR---" between outputs
-7. If no conflicts found in a prompt, return it unchanged"""
+## What to KEEP (do not modify):
+- Subject descriptions (person, clothing, pose, expression)
+- Composition (camera angle, shot type, framing)
+- Lighting intensity (bright, dim, harsh, soft - without color)
+- Atmosphere (dark, moody, shadows, contrast, silhouette, atmospheric)
+- Location, setting, textures, materials
+
+## Output Format:
+- Multiple prompts separated by "---PROMPT_SEPARATOR---"
+- Format: [1] filtered_prompt---PROMPT_SEPARATOR---[2] filtered_prompt
+- Return ONLY the filtered prompts, no explanations"""
+
+        elif color_mode == "warm-muted":
+            system_prompt = f"""You are a prompt filter for warm-toned ink and watercolor style image generation.
+
+## Task
+Remove harsh/vivid colors but KEEP warm, earthy, muted tones. The target style "{style_name}" uses warm sepia, earthy, and muted watercolor tones.
+
+## What to REMOVE:
+- Neon colors and lighting (neon lights, neon glow, neon-lit)
+- Vivid/saturated colors (vivid, vibrant, saturated, bright colors)
+- Cool tones (cool light, blue tones, cyan, cold)
+- Modern artificial lighting colors
+- Rainbow, iridescent effects
+
+## What to KEEP (these are compatible):
+- Warm tones (warm, golden, amber, sepia, earthy)
+- Muted colors (muted, soft, gentle, faded)
+- Natural warm light (afternoon light, sunset warmth, warm sunlight)
+- Earthy colors (brown, ochre, terracotta, dusty)
+- Watercolor descriptors (soft wash, blending, tones)
+
+## What to KEEP (do not modify):
+- Subject descriptions (person, clothing, pose, expression)
+- Composition (camera angle, shot type, framing)
+- Atmosphere and mood
+- Location, setting, textures, materials
+
+## Output Format:
+- Multiple prompts separated by "---PROMPT_SEPARATOR---"
+- Format: [1] filtered_prompt---PROMPT_SEPARATOR---[2] filtered_prompt
+- Return ONLY the filtered prompts, no explanations"""
+
+        elif color_mode == "watercolor":
+            system_prompt = f"""You are a prompt filter for watercolor illustration style image generation.
+
+## Task
+Remove harsh/digital/photorealistic elements. The target style "{style_name}" uses soft, natural watercolor aesthetics with gentle color blending.
+
+## What to REMOVE:
+- Neon lights and artificial colored lighting (neon, neon-lit, LED)
+- Photorealistic/digital terms (photorealistic, hyper-realistic, raw photo, 8k, HDR)
+- Harsh contrast terms (harsh shadows, sharp contrast, hard edges)
+- Modern digital effects (lens flare, bokeh, chromatic aberration)
+
+## What to KEEP (these are compatible):
+- Soft, natural colors (any natural color is fine)
+- Warm lighting (golden hour, afternoon light, sunset, dappled light)
+- Watercolor descriptors (soft, wet, blending, wash, gentle, diffused)
+- Vibrant but natural colors (vibrant, colorful - these are OK)
+- Organic textures and natural materials
+
+## What to KEEP (do not modify):
+- Subject descriptions (person, clothing, pose, expression)
+- Composition (camera angle, shot type, framing)
+- Atmosphere and mood
+- Location, setting, textures, materials
+
+## Output Format:
+- Multiple prompts separated by "---PROMPT_SEPARATOR---"
+- Format: [1] filtered_prompt---PROMPT_SEPARATOR---[2] filtered_prompt
+- Return ONLY the filtered prompts, no explanations"""
 
         try:
             import anthropic
