@@ -277,6 +277,143 @@ class MergeStringsNode:
         return (merged_strings,)
 
 
+LORA_STYLE_PRESETS = {
+    "inksketch": {
+        "description": "Monochrome ink sketch style",
+        "conflicts": ["vivid colors", "bright colors", "golden hour", "warm glow", "colorful", "orange-gold", "vibrant"],
+    },
+    "ink-wash": {
+        "description": "Traditional Asian ink wash painting style",
+        "conflicts": ["vivid colors", "bright colors", "golden hour", "warm glow", "neon", "vibrant"],
+    },
+    "pen-ink-illustration": {
+        "description": "Detailed pen and ink linework illustration",
+        "conflicts": ["vivid colors", "bright colors", "golden hour", "warm glow", "colorful", "soft blur"],
+    },
+    "watercolor-illustration": {
+        "description": "Soft watercolor style with gentle color bleeding",
+        "conflicts": ["harsh lighting", "neon", "sharp edges", "hyper-realistic", "photorealistic"],
+    },
+    "ink-watercolor": {
+        "description": "Soft ink and watercolor blend with muted tones",
+        "conflicts": ["vivid", "harsh", "neon", "bright saturated", "hyper-realistic"],
+    },
+    "anime": {
+        "description": "Japanese anime/manga style",
+        "conflicts": ["photorealistic", "realistic photo", "detailed skin texture", "pores", "hyper-realistic", "raw photo"],
+    },
+    "realistic": {
+        "description": "Photorealistic style",
+        "conflicts": ["anime", "cartoon", "illustration", "cel-shaded", "flat colors", "lineart"],
+    },
+    "3d-render": {
+        "description": "3D rendered CGI style",
+        "conflicts": ["2d", "flat", "hand-drawn", "sketch", "watercolor", "oil painting"],
+    },
+}
+
+
+class PromptStyleFilterNode:
+    """Filter prompt to remove conflicting keywords for specific LoRA styles using Claude API."""
+
+    SEPARATOR = "\n---PROMPT_SEPARATOR---\n"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "prompt": ("STRING", {"forceInput": True}),
+                "lora_style": (list(LORA_STYLE_PRESETS.keys()),),
+                "api_key": ("STRING", {"default": ""}),
+            },
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("filtered_prompt",)
+    FUNCTION = "filter_prompt"
+    CATEGORY = "StoryBoard"
+    INPUT_IS_LIST = True
+    OUTPUT_IS_LIST = (True,)
+
+    def filter_prompt(self, prompt, lora_style, api_key):
+        # Handle list inputs
+        style = lora_style[0] if isinstance(lora_style, list) else lora_style
+        key = api_key[0] if isinstance(api_key, list) else api_key
+        prompts = prompt if isinstance(prompt, list) else [prompt]
+
+        if not key:
+            logger.warning("[StoryBoard] PromptStyleFilterNode: No API key provided, returning original prompts")
+            return (prompts,)
+
+        style_info = LORA_STYLE_PRESETS.get(style, {})
+        style_desc = style_info.get("description", style)
+        conflicts = style_info.get("conflicts", [])
+
+        # Combine all prompts with separator
+        combined_input = self.SEPARATOR.join([f"[{i+1}] {p}" for i, p in enumerate(prompts)])
+
+        system_prompt = f"""You are a prompt optimizer for image generation.
+Your task is to filter prompts to make them compatible with a specific LoRA style.
+
+Target LoRA style: {style} ({style_desc})
+
+Known conflicting keywords/phrases for this style:
+{', '.join(conflicts)}
+
+Instructions:
+1. Remove or replace any keywords that conflict with the target style
+2. Keep the core subject and composition intact
+3. Do not add new creative elements - only remove conflicts
+4. You will receive multiple numbered prompts separated by "---PROMPT_SEPARATOR---"
+5. Return each filtered prompt on the same format: [number] filtered_prompt
+6. Use the EXACT same separator "---PROMPT_SEPARATOR---" between outputs
+7. If no conflicts found in a prompt, return it unchanged"""
+
+        try:
+            import anthropic
+            client = anthropic.Anthropic(api_key=key)
+
+            response = client.messages.create(
+                model="claude-haiku-4-20250514",
+                max_tokens=4096,
+                system=system_prompt,
+                messages=[
+                    {"role": "user", "content": f"Filter these prompts:\n\n{combined_input}"}
+                ]
+            )
+
+            result_text = response.content[0].text.strip()
+
+            # Split and parse results
+            filtered_results = []
+            parts = result_text.split("---PROMPT_SEPARATOR---")
+
+            for part in parts:
+                part = part.strip()
+                # Remove [number] prefix if present
+                if part.startswith("["):
+                    idx = part.find("]")
+                    if idx != -1:
+                        part = part[idx+1:].strip()
+                if part:
+                    filtered_results.append(part)
+
+            # Ensure we have the same number of outputs
+            if len(filtered_results) != len(prompts):
+                logger.warning(f"[StoryBoard] PromptStyleFilterNode: Output count mismatch ({len(filtered_results)} vs {len(prompts)}), returning originals")
+                return (prompts,)
+
+            logger.info(f"[StoryBoard] PromptStyleFilterNode: Filtered {len(prompts)} prompts for {style}")
+            return (filtered_results,)
+
+        except ImportError:
+            logger.error("[StoryBoard] PromptStyleFilterNode: anthropic package not installed")
+            return (prompts,)
+        except Exception as e:
+            logger.error(f"[StoryBoard] PromptStyleFilterNode: API error - {e}")
+            return (prompts,)
+
+
 # Node class mappings for ComfyUI
 NODE_CLASS_MAPPINGS = {
     "JsonParserNode": JsonParserNode,
@@ -284,6 +421,7 @@ NODE_CLASS_MAPPINGS = {
     "BuildCharacterPromptNode": BuildCharacterPromptNode,
     "SelectIndexNode": SelectIndexNode,
     "MergeStringsNode": MergeStringsNode,
+    "PromptStyleFilter": PromptStyleFilterNode,
 }
 
 # Display name mappings for ComfyUI UI
@@ -293,4 +431,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "BuildCharacterPromptNode": "Build Character Prompt (StoryBoard)",
     "SelectIndexNode": "Select Index (StoryBoard)",
     "MergeStringsNode": "Merge Strings (StoryBoard)",
+    "PromptStyleFilter": "Prompt Style Filter (StoryBoard)",
 }
