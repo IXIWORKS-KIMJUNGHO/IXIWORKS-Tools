@@ -353,6 +353,14 @@ class PromptStyleFilterNode:
         combined_input = self.SEPARATOR.join([f"[{i+1}] {p}" for i, p in enumerate(prompts)])
 
         # Common instruction for all styles
+        remove_realistic = """
+## REMOVE photorealistic keywords (CRITICAL):
+- photo realistic, photorealistic, realistic, hyper realistic, hyperrealistic
+- photograph, photo, photography, RAW photo
+- DSLR, 8k uhd, 4k, ultra realistic, lifelike
+- cinematic photo, film grain (unless style-appropriate)
+These keywords override LoRA styles and MUST be removed."""
+
         keep_instruction = """
 ## ALWAYS KEEP (never modify these):
 - Composition: rule of thirds, leading lines, centered, off-center, etc.
@@ -363,6 +371,7 @@ class PromptStyleFilterNode:
 
         if color_mode == "inksketch":
             system_prompt = f"""You are a prompt optimizer for ink sketch style image generation.
+{remove_realistic}
 
 ## Transform these elements for ink sketch style:
 
@@ -375,18 +384,16 @@ class PromptStyleFilterNode:
 - "warm glow" → "strong directional lighting"
 - "bathed in sunlight" → "harsh angular shadows"
 - Keep: shadows, contrast, silhouette
-
-### Technique → ADD at START:
-{add_keywords}
 {keep_instruction}
 
 ## Output Format:
 - Multiple prompts separated by "---PROMPT_SEPARATOR---"
 - Format: [1] filtered_prompt
-- Style keywords at START of prompt"""
+- Place style-defining keywords at the START of each prompt"""
 
         elif color_mode == "inkwash":
             system_prompt = f"""You are a prompt optimizer for ink wash style image generation.
+{remove_realistic}
 
 ## Transform these elements for ink wash style:
 
@@ -399,9 +406,6 @@ class PromptStyleFilterNode:
 - "bright sunlight" → "morning light casting long diagonal shadows"
 - Add: "wet pavement", "puddle reflections"
 
-### Technique → ADD at END:
-{add_keywords}
-
 ### Special: CONDENSE the prompt
 - Remove verbose explanations, keep core descriptions
 {keep_instruction}
@@ -409,10 +413,11 @@ class PromptStyleFilterNode:
 ## Output Format:
 - Multiple prompts separated by "---PROMPT_SEPARATOR---"
 - Format: [1] filtered_prompt
-- Style keywords at END of prompt"""
+- Place style-defining keywords at the START of each prompt"""
 
         elif color_mode == "penink":
             system_prompt = f"""You are a prompt optimizer for pen and ink illustration style image generation.
+{remove_realistic}
 
 ## Transform these elements for pen & ink style:
 
@@ -424,21 +429,21 @@ class PromptStyleFilterNode:
 - "bathed in glow" → "low angle afternoon light casting long dramatic shadows"
 - "well-defined shadows" → "well-defined shadows with crosshatching"
 
-### Technique → ENHANCE details and ADD at END:
+### Technique → ENHANCE details:
 - "brick buildings" → "detailed brick buildings"
 - "cafe sign" → "hanging cafe sign"
 - "city street" → "cobblestone city street"
 - Add: "intricate linework on architectural details"
-- {add_keywords}
 {keep_instruction}
 
 ## Output Format:
 - Multiple prompts separated by "---PROMPT_SEPARATOR---"
 - Format: [1] filtered_prompt
-- Style keywords at END of prompt"""
+- Place style-defining keywords at the START of each prompt"""
 
         elif color_mode == "inkwatercolor":
             system_prompt = f"""You are a prompt optimizer for ink and watercolor illustration style image generation.
+{remove_realistic}
 
 ## Transform these elements for ink watercolor style:
 
@@ -451,48 +456,48 @@ class PromptStyleFilterNode:
 - Keep all warm lighting descriptions
 - Add: "loose ink linework with watercolor washes"
 
-### Technique → ENHANCE with charm and ADD at END:
+### Technique → ENHANCE with charm:
 - "city street" → "dusty city street"
 - "brick buildings" → "charming brick buildings"
 - "cafe sign" → "hand-painted cafe sign"
 - Consider adding: "a stray dog nearby", "pigeons"
-- {add_keywords}
 {keep_instruction}
 
 ## Output Format:
 - Multiple prompts separated by "---PROMPT_SEPARATOR---"
 - Format: [1] filtered_prompt
-- Style keywords at END of prompt"""
+- Place style-defining keywords at the START of each prompt"""
 
         elif color_mode == "watercolorillust":
             system_prompt = f"""You are a prompt optimizer for watercolor illustration style image generation.
+{remove_realistic}
 
 ## Transform these elements for watercolor illustration style:
 
 ### Colors → KEEP ALL:
 - Keep all colors including vibrant (vibrant, colorful, golden, warm)
-- Remove only: neon, photorealistic, hyper-realistic, HDR, 8k
 
 ### Lighting → Keep and enhance:
 - Keep all warm/natural lighting
 - Add: "dappled light filtering through plane trees"
 
-### Technique → ENHANCE with color and ADD at END:
+### Technique → ENHANCE with color:
 - "city street" → "sunlit cobblestone city street"
 - "brick buildings" → "colorful brick buildings"
 - "cafe sign" → "charming cafe sign with striped awning"
 - Add: "wet-on-wet blending with soft edges"
-- {add_keywords}
 {keep_instruction}
 
 ## Output Format:
 - Multiple prompts separated by "---PROMPT_SEPARATOR---"
 - Format: [1] filtered_prompt
-- Style keywords at END of prompt"""
+- Place style-defining keywords at the START of each prompt"""
 
         try:
             import anthropic
             client = anthropic.Anthropic(api_key=key)
+
+            logger.info(f"[StoryBoard] PromptStyleFilterNode: Filtering {len(prompts)} prompts with style '{style_name}' (color_mode: {color_mode})")
 
             response = client.messages.create(
                 model="claude-haiku-4-5-20251001",
@@ -504,6 +509,7 @@ class PromptStyleFilterNode:
             )
 
             result_text = response.content[0].text.strip()
+            logger.info(f"[StoryBoard] PromptStyleFilterNode: Received response from Claude API")
 
             # Split and parse results
             filtered_results = []
@@ -524,7 +530,18 @@ class PromptStyleFilterNode:
                 logger.warning(f"[StoryBoard] PromptStyleFilterNode: Output count mismatch ({len(filtered_results)} vs {len(prompts)}), returning originals")
                 return (prompts,)
 
-            logger.info(f"[StoryBoard] PromptStyleFilterNode: Filtered {len(prompts)} prompts for {style}")
+            # Prepend add_keywords to each result for stronger LoRA trigger
+            if add_keywords:
+                filtered_results = [f"{add_keywords}, {r}" for r in filtered_results]
+                logger.info(f"[StoryBoard] PromptStyleFilterNode: Prepended keywords: '{add_keywords}'")
+
+            # Log each filtered result (truncated for readability)
+            for i, (orig, filtered) in enumerate(zip(prompts, filtered_results)):
+                orig_preview = orig[:50] + "..." if len(orig) > 50 else orig
+                filtered_preview = filtered[:80] + "..." if len(filtered) > 80 else filtered
+                logger.info(f"[StoryBoard] PromptStyleFilterNode: [{i+1}] {orig_preview} → {filtered_preview}")
+
+            logger.info(f"[StoryBoard] PromptStyleFilterNode: Done - {len(filtered_results)} prompts filtered for '{style_name}'")
             return (filtered_results,)
 
         except ImportError:
