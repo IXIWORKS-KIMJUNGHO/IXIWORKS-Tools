@@ -166,22 +166,18 @@ class DiffSynthControlnetAdvancedNode:
         return {
             "required": {
                 "model": ("MODEL",),
-                "high": ("FLOAT", {
+                "strength_start": ("FLOAT", {
                     "default": 1.0, "min": 0.0, "max": 2.0, "step": 0.01,
                 }),
-                "low": ("FLOAT", {
+                "strength_end": ("FLOAT", {
                     "default": 0.0, "min": 0.0, "max": 2.0, "step": 0.01,
                 }),
-                "start": ("FLOAT", {
+                "start_at": ("FLOAT", {
                     "default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01,
                 }),
-                "end": ("FLOAT", {
+                "end_at": ("FLOAT", {
                     "default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01,
                 }),
-                "fade": (
-                    ["none", "fade out", "fade in"],
-                    {"default": "none"},
-                ),
             }
         }
 
@@ -190,22 +186,17 @@ class DiffSynthControlnetAdvancedNode:
     FUNCTION = "apply"
     CATEGORY = "IXIWORKS/Image"
 
-    def apply(self, model, high, low, start, end, fade):
+    def apply(self, model, strength_start, strength_end, start_at, end_at):
         model_sampling = model.get_model_object("model_sampling")
-        sigma_start = model_sampling.percent_to_sigma(start)
-        sigma_end = model_sampling.percent_to_sigma(end)
+        sigma_start = model_sampling.percent_to_sigma(start_at)
+        sigma_end = model_sampling.percent_to_sigma(end_at)
 
-        if fade == "fade out":
-            str_begin, str_finish = high, low
-            use_fade = True
-        elif fade == "fade in":
-            str_begin, str_finish = low, high
-            use_fade = True
-        else:
-            str_begin, str_finish = high, high
-            use_fade = False
+        # Auto-detect fade: if strength_start != strength_end, apply fade
+        str_begin = strength_start
+        str_finish = strength_end
+        use_fade = (strength_start != strength_end)
 
-        uniform_scale = high
+        uniform_scale = strength_start
 
         m = model.clone()
         existing_patches = m.model_options.get("patches", {})
@@ -264,5 +255,5 @@ NODE_CLASS_MAPPINGS = {
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "ControlNetPreprocessor": "ControlNet Preprocessor",
-    "DiffSynthControlnetAdvanced": "ControlNet Advanced (QWEN, ZIT)",
+    "DiffSynthControlnetAdvanced": "ControlNet Step Control",
 }

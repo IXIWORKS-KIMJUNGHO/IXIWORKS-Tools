@@ -10,17 +10,7 @@ app.registerExtension({
         nodeType.prototype.onNodeCreated = function () {
             if (origCreated) origCreated.apply(this, arguments);
 
-            const self = this;
-            const fadeWidget = this.widgets.find((w) => w.name === "fade");
-            if (!fadeWidget) return;
-
-            const origCallback = fadeWidget.callback;
-            fadeWidget.callback = function (value) {
-                if (origCallback) origCallback.call(this, value);
-                self._updateFadeWidgets(value);
-            };
-
-            // Strength curve graph widget (interactive)
+            // Strength curve graph widget (always visible, interactive)
             this.widgets.push({
                 name: "strength_graph",
                 type: "custom",
@@ -39,36 +29,35 @@ app.registerExtension({
                         const w = node.widgets.find((w) => w.name === name);
                         return w != null ? w.value : def;
                     };
-                    const strength = val("strength_model", 1.0);
-                    const startP = val("start", 0.0);
-                    const endP = val("end", 1.0);
-                    const fade = val("fade", "none");
-                    const low = val("low", 0.0);
+                    const strengthStart = val("strength_start", 1.0);
+                    const strengthEnd = val("strength_end", 0.0);
+                    const startAt = val("start_at", 0.0);
+                    const endAt = val("end_at", 1.0);
 
-                    let s0, s1;
-                    if (fade === "fade out") {
-                        s0 = strength; s1 = low;
-                    } else if (fade === "fade in") {
-                        s0 = low; s1 = strength;
-                    } else {
-                        s0 = strength; s1 = strength;
-                    }
+                    // s0 = strength at start_at, s1 = strength at end_at
+                    const s0 = strengthStart;
+                    const s1 = strengthEnd;
 
-                    const sx = gx + startP * gw;
-                    const ex = gx + endP * gw;
+                    // Auto-detect fade direction
+                    let fadeDir = "none";
+                    if (strengthStart > strengthEnd) fadeDir = "fade out";
+                    else if (strengthStart < strengthEnd) fadeDir = "fade in";
+
+                    const sx = gx + startAt * gw;
+                    const ex = gx + endAt * gw;
                     const toY = (v) => gy + gh - Math.min(v / maxS, 1.0) * gh;
                     const fromY = (py) => {
                         const raw = (gy + gh - py) / gh * maxS;
-                        return Math.round(Math.max(0, Math.min(maxS, raw)) * 10) / 10;
+                        return Math.round(Math.max(0, Math.min(maxS, raw)) * 100) / 100;
                     };
                     const fromX = (px) => {
                         const raw = (px - gx) / gw;
-                        return Math.round(Math.max(0, Math.min(1, raw)) * 10) / 10;
+                        return Math.round(Math.max(0, Math.min(1, raw)) * 100) / 100;
                     };
 
                     return {
                         gx, gy, gw, gh, maxS,
-                        strength, startP, endP, fade, low,
+                        strengthStart, strengthEnd, startAt, endAt, fadeDir,
                         s0, s1, sx, ex, toY, fromY, fromX, val,
                     };
                 },
@@ -98,14 +87,14 @@ app.registerExtension({
                         ctx.stroke();
                     }
 
-                    // Y-axis labels (high/low)
+                    // Y-axis labels (strength_start / strength_end)
                     ctx.font = "9px monospace";
                     ctx.fillStyle = "rgba(255,255,255,0.4)";
                     ctx.textAlign = "left";
-                    const highVal = Math.max(p.strength, p.low);
-                    const lowVal = Math.min(p.strength, p.low);
-                    ctx.fillText("high " + highVal.toFixed(1), p.gx + 4, p.gy + 12);
-                    ctx.fillText("low " + lowVal.toFixed(1), p.gx + 4, p.gy + p.gh - 4);
+                    const highVal = Math.max(p.strengthStart, p.strengthEnd);
+                    const lowVal = Math.min(p.strengthStart, p.strengthEnd);
+                    ctx.fillText(highVal.toFixed(2), p.gx + 4, p.gy + 12);
+                    ctx.fillText(lowVal.toFixed(2), p.gx + 4, p.gy + p.gh - 4);
 
                     // Fill under curve
                     ctx.fillStyle = "rgba(179,157,219,0.2)";
@@ -128,7 +117,7 @@ app.registerExtension({
                     // Start/end dashed markers
                     ctx.lineWidth = 1;
                     ctx.setLineDash([3, 3]);
-                    if (p.startP > 0.01) {
+                    if (p.startAt > 0.01) {
                         ctx.strokeStyle = node._graphDrag === "start"
                             ? "rgba(255,255,255,0.6)"
                             : "rgba(255,255,255,0.2)";
@@ -137,7 +126,7 @@ app.registerExtension({
                         ctx.lineTo(p.sx, p.gy + p.gh);
                         ctx.stroke();
                     }
-                    if (p.endP < 0.99) {
+                    if (p.endAt < 0.99) {
                         ctx.strokeStyle = node._graphDrag === "end"
                             ? "rgba(255,255,255,0.6)"
                             : "rgba(255,255,255,0.2)";
@@ -159,13 +148,13 @@ app.registerExtension({
                     ctx.arc(p.ex, p.toY(p.s1), r1, 0, Math.PI * 2);
                     ctx.fill();
 
-                    // Fade direction indicator
-                    if (p.fade !== "none") {
+                    // Fade direction indicator (auto-detected)
+                    if (p.fadeDir !== "none") {
                         ctx.font = "10px monospace";
                         ctx.fillStyle = "rgba(179,157,219,0.7)";
                         ctx.textAlign = "center";
                         const midX = (p.sx + p.ex) / 2;
-                        const arrow = p.fade === "fade out" ? "▼" : "▲";
+                        const arrow = p.fadeDir === "fade out" ? "▼" : "▲";
                         ctx.fillText(arrow, midX, p.gy + p.gh / 2);
                     }
 
@@ -209,17 +198,13 @@ app.registerExtension({
                     if ((etype === "pointermove" || etype === "mousemove") && node._graphDrag) {
                         const drag = node._graphDrag;
                         if (drag === "s0") {
-                            const v = p.fromY(my);
-                            if (p.fade === "fade in") setVal("low", v);
-                            else setVal("strength_model", v);
+                            setVal("strength_start", p.fromY(my));
                         } else if (drag === "s1") {
-                            const v = p.fromY(my);
-                            if (p.fade === "fade out") setVal("low", v);
-                            else setVal("strength_model", v);
+                            setVal("strength_end", p.fromY(my));
                         } else if (drag === "start") {
-                            setVal("start", Math.min(p.fromX(mx), p.val("end", 1)));
+                            setVal("start_at", Math.min(p.fromX(mx), p.val("end_at", 1)));
                         } else if (drag === "end") {
-                            setVal("end", Math.max(p.fromX(mx), p.val("start", 0)));
+                            setVal("end_at", Math.max(p.fromX(mx), p.val("start_at", 0)));
                         }
                         app.graph.setDirtyCanvas(true, true);
                         return true;
@@ -240,55 +225,7 @@ app.registerExtension({
                 },
             });
 
-            this._updateFadeWidgets(fadeWidget.value);
-        };
-
-        nodeType.prototype._updateFadeWidgets = function (fadeValue) {
-            const fadeOn = fadeValue !== "none";
-            for (const w of this.widgets) {
-                if (w.name === "strength_model") {
-                    // fade off → show strength widget, fade on → hide (graph controls it)
-                    if (fadeOn) {
-                        w.type = "hidden";
-                        w.computeSize = () => [0, -4];
-                    } else {
-                        w.type = "number";
-                        w.computeSize = undefined;
-                    }
-                } else if (w.name === "low") {
-                    // fade on → show low widget, fade off → hide
-                    if (fadeOn) {
-                        w.type = "number";
-                        w.computeSize = undefined;
-                    } else {
-                        w.type = "hidden";
-                        w.computeSize = () => [0, -4];
-                    }
-                } else if (w.name === "strength_graph") {
-                    // fade on → show graph, fade off → hide
-                    if (fadeOn) {
-                        w.type = "custom";
-                        w.computeSize = w._origComputeSize || (() => [0, 360]);
-                    } else {
-                        if (!w._origComputeSize) w._origComputeSize = w.computeSize;
-                        w.type = "hidden";
-                        w.computeSize = () => [0, -4];
-                    }
-                }
-            }
             this.setSize(this.computeSize());
-            app.graph.setDirtyCanvas(true, true);
-        };
-
-        const origOnConfigure = nodeType.prototype.onConfigure;
-        nodeType.prototype.onConfigure = function (info) {
-            if (origOnConfigure) origOnConfigure.apply(this, arguments);
-            const fadeWidget = this.widgets && this.widgets.find(
-                (w) => w.name === "fade"
-            );
-            if (fadeWidget) {
-                this._updateFadeWidgets(fadeWidget.value);
-            }
         };
     },
 });
