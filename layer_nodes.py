@@ -1112,6 +1112,32 @@ class ModelStructureDebug:
                     has_to_k = hasattr(attn_module, 'to_k')
                     num_heads = getattr(attn_module, 'num_heads', 'unknown')
 
+                    # Collect all sub-modules and attributes of attention
+                    attn_children = {}
+                    if hasattr(attn_module, 'named_children'):
+                        for name, child in attn_module.named_children():
+                            child_info = type(child).__name__
+                            if hasattr(child, 'weight'):
+                                child_info += f" weight={tuple(child.weight.shape)}"
+                            attn_children[name] = child_info
+
+                    # Also check common Q, K attribute names
+                    qk_candidates = ['to_q', 'to_k', 'to_v', 'q_proj', 'k_proj', 'v_proj',
+                                     'wq', 'wk', 'wv', 'query', 'key', 'value',
+                                     'q', 'k', 'v', 'qkv', 'in_proj', 'qkv_proj']
+                    found_qk = {name: True for name in qk_candidates if hasattr(attn_module, name)}
+
+                    # Collect block-level children too
+                    block_children = {}
+                    if hasattr(block, 'named_children'):
+                        for name, child in block.named_children():
+                            child_info = type(child).__name__
+                            if hasattr(child, 'weight'):
+                                child_info += f" weight={tuple(child.weight.shape)}"
+                            elif hasattr(child, '__len__'):
+                                child_info += f" [{len(child)}]"
+                            block_children[name] = child_info
+
                     results.append({
                         'path': full_path,
                         'num_blocks': len(obj),
@@ -1119,7 +1145,11 @@ class ModelStructureDebug:
                         'has_to_q': has_to_q,
                         'has_to_k': has_to_k,
                         'num_heads': num_heads,
-                        'hook_compatible': has_to_q and has_to_k
+                        'hook_compatible': has_to_q and has_to_k,
+                        'attn_type': type(attn_module).__name__,
+                        'attn_children': attn_children,
+                        'found_qk_attrs': found_qk,
+                        'block_children': block_children,
                     })
 
         return results
@@ -1158,10 +1188,34 @@ class ModelStructureDebug:
                 output_lines.append(f"  Blocks: {path_info['path']}")
                 output_lines.append(f"  Num blocks: {path_info['num_blocks']}")
                 output_lines.append(f"  Attention attr: .{path_info['attn_attr']}")
+                output_lines.append(f"  Attention type: {path_info.get('attn_type', 'unknown')}")
                 output_lines.append(f"  has to_q: {path_info['has_to_q']}")
                 output_lines.append(f"  has to_k: {path_info['has_to_k']}")
                 output_lines.append(f"  num_heads: {path_info['num_heads']}")
                 output_lines.append(f"  Hook compatible: {'YES ✓' if path_info['hook_compatible'] else 'NO ✗'}")
+
+                # Show Q, K attribute candidates found
+                found_qk = path_info.get('found_qk_attrs', {})
+                if found_qk:
+                    output_lines.append(f"\n  Found Q/K/V attributes: {list(found_qk.keys())}")
+                else:
+                    output_lines.append(f"\n  No standard Q/K/V attributes found")
+
+                # Show all attention sub-modules
+                attn_children = path_info.get('attn_children', {})
+                if attn_children:
+                    output_lines.append(f"\n  Attention sub-modules:")
+                    for name, info in attn_children.items():
+                        output_lines.append(f"    .{name}: {info}")
+                else:
+                    output_lines.append(f"\n  No attention sub-modules found")
+
+                # Show block-level children
+                block_children = path_info.get('block_children', {})
+                if block_children:
+                    output_lines.append(f"\n  Block sub-modules:")
+                    for name, info in block_children.items():
+                        output_lines.append(f"    .{name}: {info}")
         else:
             output_lines.append("\n[WARNING] Could not find attention layers!")
             output_lines.append("The model structure may be different from expected.")
