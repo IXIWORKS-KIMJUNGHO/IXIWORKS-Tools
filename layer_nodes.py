@@ -88,8 +88,11 @@ class AttentionHookManager:
                 if manager.current_step not in manager.target_steps:
                     return
 
+            print(f"[AttentionHook] hook_fn called! Layer {layer_idx}, step {manager.current_step}")
+
             try:
                 hidden_states = input[0]
+                print(f"[AttentionHook] hidden_states shape: {tuple(hidden_states.shape)}")
 
                 # ===== Pattern 1: Fused QKV (Z-Image JointAttention) =====
                 if hasattr(module, 'qkv'):
@@ -136,7 +139,8 @@ class AttentionHookManager:
                     k = key.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
 
                 else:
-                    logger.warning(f"[AttentionHook] Layer {layer_idx}: unknown attention pattern")
+                    print(f"[AttentionHook] Layer {layer_idx}: unknown attention pattern")
+                    print(f"[AttentionHook] Module attrs: {[a for a in dir(module) if not a.startswith('_')]}")
                     return
 
                 # Compute attention weights: softmax(Q @ K^T / sqrt(d))
@@ -154,13 +158,15 @@ class AttentionHookManager:
                     attention_weights=attn_weights.detach().cpu()
                 ))
 
-                logger.debug(
+                print(
                     f"[AttentionHook] Captured layer {layer_idx}, step {manager.current_step}, "
                     f"attn shape: {tuple(attn_weights.shape)}"
                 )
 
             except Exception as e:
-                logger.warning(f"[AttentionHook] Capture failed at layer {layer_idx}: {e}")
+                print(f"[AttentionHook] Capture FAILED at layer {layer_idx}: {e}")
+                import traceback
+                traceback.print_exc()
 
         return hook_fn
 
