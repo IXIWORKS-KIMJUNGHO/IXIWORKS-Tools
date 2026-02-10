@@ -71,7 +71,12 @@ class AttentionHookManager:
         return self.text_token_count + self.visual_token_count
 
     def _create_hook(self, layer_idx: int):
-        """Create a forward hook for capturing Q, K and computing attention weights"""
+        """Create a forward hook for capturing Q, K and computing attention weights.
+
+        Supports two attention module patterns:
+        1. Separate: to_q, to_k, to_v (Stable Diffusion style)
+        2. Fused QKV: qkv single linear (Z-Image JointAttention style)
+        """
         manager = self
 
         def hook_fn(module, input, output):
@@ -86,29 +91,53 @@ class AttentionHookManager:
             try:
                 hidden_states = input[0]
 
-                # Get Q, K from module's projection layers
-                # This assumes the module has to_q and to_k attributes
-                if not hasattr(module, 'to_q') or not hasattr(module, 'to_k'):
-                    logger.warning(f"[AttentionHook] Layer {layer_idx}: to_q/to_k not found")
+                # ===== Pattern 1: Fused QKV (Z-Image JointAttention) =====
+                if hasattr(module, 'qkv'):
+                    qkv_out = module.qkv(hidden_states)
+                    # qkv_out shape: (batch, seq, 3 * hidden_dim)
+                    # Split into Q, K, V
+                    hidden_dim = qkv_out.shape[-1] // 3
+                    query, key, value = qkv_out.chunk(3, dim=-1)
+
+                    # Determine num_heads from q_norm or known head_dim
+                    if hasattr(module, 'q_norm') and hasattr(module.q_norm, 'weight'):
+                        head_dim = module.q_norm.weight.shape[0]
+                        num_heads = hidden_dim // head_dim
+                    else:
+                        num_heads = getattr(module, 'num_heads', 30)
+                        head_dim = hidden_dim // num_heads
+
+                    # Reshape for multi-head: (batch, seq, dim) → (batch, heads, seq, head_dim)
+                    batch_size, seq_len = query.shape[0], query.shape[1]
+                    q = query.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
+                    k = key.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
+
+                    # Apply QK-Norm (RMSNorm per head)
+                    if hasattr(module, 'q_norm'):
+                        q = module.q_norm(q)
+                    if hasattr(module, 'k_norm'):
+                        k = module.k_norm(k)
+
+                # ===== Pattern 2: Separate Q, K (SD style) =====
+                elif hasattr(module, 'to_q') and hasattr(module, 'to_k'):
+                    query = module.to_q(hidden_states)
+                    key = module.to_k(hidden_states)
+
+                    if hasattr(module, 'norm_q'):
+                        query = module.norm_q(query)
+                    if hasattr(module, 'norm_k'):
+                        key = module.norm_k(key)
+
+                    num_heads = getattr(module, 'num_heads', 32)
+                    head_dim = query.shape[-1] // num_heads
+                    batch_size, seq_len = query.shape[0], query.shape[1]
+
+                    q = query.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
+                    k = key.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
+
+                else:
+                    logger.warning(f"[AttentionHook] Layer {layer_idx}: unknown attention pattern")
                     return
-
-                query = module.to_q(hidden_states)
-                key = module.to_k(hidden_states)
-
-                # Apply normalization if available
-                if hasattr(module, 'norm_q'):
-                    query = module.norm_q(query)
-                if hasattr(module, 'norm_k'):
-                    key = module.norm_k(key)
-
-                # Reshape for multi-head attention
-                batch_size = query.shape[0]
-                seq_len = query.shape[1]
-                num_heads = getattr(module, 'num_heads', 32)
-                head_dim = query.shape[-1] // num_heads
-
-                q = query.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
-                k = key.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
 
                 # Compute attention weights: softmax(Q @ K^T / sqrt(d))
                 scale = 1.0 / math.sqrt(head_dim)
@@ -125,7 +154,10 @@ class AttentionHookManager:
                     attention_weights=attn_weights.detach().cpu()
                 ))
 
-                logger.debug(f"[AttentionHook] Captured layer {layer_idx}, step {manager.current_step}")
+                logger.debug(
+                    f"[AttentionHook] Captured layer {layer_idx}, step {manager.current_step}, "
+                    f"attn shape: {tuple(attn_weights.shape)}"
+                )
 
             except Exception as e:
                 logger.warning(f"[AttentionHook] Capture failed at layer {layer_idx}: {e}")
@@ -146,14 +178,17 @@ class AttentionHookManager:
         # ComfyUI model wrapper
         if hasattr(model, 'model') and hasattr(model.model, 'diffusion_model'):
             diff_model = model.model.diffusion_model
-            if hasattr(diff_model, 'blocks'):
-                blocks = diff_model.blocks
-            elif hasattr(diff_model, 'transformer_blocks'):
-                blocks = diff_model.transformer_blocks
+            for attr in ['blocks', 'transformer_blocks', 'layers']:
+                if hasattr(diff_model, attr):
+                    blocks = getattr(diff_model, attr)
+                    break
 
         # Direct model access
-        if blocks is None and hasattr(model, 'blocks'):
-            blocks = model.blocks
+        if blocks is None:
+            for attr in ['blocks', 'transformer_blocks', 'layers']:
+                if hasattr(model, attr):
+                    blocks = getattr(model, attr)
+                    break
 
         if blocks is None:
             logger.warning("[AttentionHook] Could not find transformer blocks in model")
