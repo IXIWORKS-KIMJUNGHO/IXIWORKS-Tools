@@ -1,68 +1,14 @@
-PREPROCESSOR_REGISTRY = {
-    "canny": {
-        "class": "CannyDetector",
-        "from_pretrained": False,
-        "call_params": {},
-    },
-    "depth": {
-        "class": "MidasDetector",
-        "from_pretrained": True,
-        "call_params": {},
-    },
-    "lineart": {
-        "class": "LineartDetector",
-        "from_pretrained": True,
-        "call_params": {"coarse": False},
-    },
-    "pose": {
-        "class": "OpenposeDetector",
-        "from_pretrained": True,
-        "call_params": {"hand_and_face": True},
-    },
-    "mlsd": {
-        "class": "MLSDdetector",
-        "from_pretrained": True,
-        "call_params": {},
-    },
-}
-
-_DETECTOR_CLASSES = None
-
-
-def _load_detector_classes():
-    global _DETECTOR_CLASSES
-    if _DETECTOR_CLASSES is not None:
-        return _DETECTOR_CLASSES
-
-    from controlnet_aux import (
-        CannyDetector,
-        LineartDetector,
-        MidasDetector,
-        MLSDdetector,
-        OpenposeDetector,
-    )
-
-    _DETECTOR_CLASSES = {
-        "CannyDetector": CannyDetector,
-        "MidasDetector": MidasDetector,
-        "LineartDetector": LineartDetector,
-        "OpenposeDetector": OpenposeDetector,
-        "MLSDdetector": MLSDdetector,
-    }
-    return _DETECTOR_CLASSES
+from preprocessors import get_detector, PREPROCESSOR_IDS, CALL_PARAMS
 
 
 class ControlNetPreprocessorNode:
-    _detector_cache = {}
-
-    PREPROCESSOR_IDS = list(PREPROCESSOR_REGISTRY.keys())
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
                 "image": ("IMAGE",),
-                "preprocessor": (cls.PREPROCESSOR_IDS, {"default": "canny"}),
+                "preprocessor": (PREPROCESSOR_IDS, {"default": "canny"}),
                 "resolution": ("INT", {
                     "default": 512, "min": 256, "max": 2048, "step": 64,
                 }),
@@ -82,43 +28,14 @@ class ControlNetPreprocessorNode:
     FUNCTION = "preprocess"
     CATEGORY = "IXIWORKS/Image"
 
-    @classmethod
-    def _get_detector(cls, processor_id):
-        config = PREPROCESSOR_REGISTRY[processor_id]
-        class_name = config["class"]
-
-        if class_name not in cls._detector_cache:
-            classes = _load_detector_classes()
-            detector_cls = classes[class_name]
-
-            try:
-                if config["from_pretrained"]:
-                    detector = detector_cls.from_pretrained(
-                        "lllyasviel/Annotators"
-                    )
-                else:
-                    detector = detector_cls()
-            except Exception as e:
-                raise RuntimeError(
-                    f"Failed to load '{processor_id}' model: {e}\n"
-                    f"Models auto-download from HuggingFace on first use. "
-                    f"Check your internet connection."
-                ) from e
-
-            cls._detector_cache[class_name] = detector
-
-        return cls._detector_cache[class_name]
-
     def preprocess(self, image, preprocessor, resolution,
                    low_threshold=100, high_threshold=200):
         import torch
         import numpy as np
         from PIL import Image as PILImage
 
-        config = PREPROCESSOR_REGISTRY[preprocessor]
-        detector = self._get_detector(preprocessor)
-
-        call_kwargs = dict(config["call_params"])
+        detector = get_detector(preprocessor)
+        call_kwargs = dict(CALL_PARAMS.get(preprocessor, {}))
         call_kwargs["detect_resolution"] = resolution
         call_kwargs["image_resolution"] = resolution
 
@@ -191,7 +108,6 @@ class DiffSynthControlnetAdvancedNode:
         sigma_start = model_sampling.percent_to_sigma(start_at)
         sigma_end = model_sampling.percent_to_sigma(end_at)
 
-        # Auto-detect fade: if strength_start != strength_end, apply fade
         str_begin = strength_start
         str_finish = strength_end
         use_fade = (strength_start != strength_end)
